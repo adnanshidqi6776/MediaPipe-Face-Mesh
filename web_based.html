@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Cheating Detection - FaceMesh</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+  </head>
+  <body>
+    <h2>Ujian Online - Deteksi Kecurangan</h2>
+
+    <!-- Form input nama -->
+    <div id="login">
+      <label>Masukkan Nama: </label>
+      <input type="text" id="username" required />
+      <button onclick="startExam()">Mulai Ujian</button>
+    </div>
+
+    <!-- Video dan Canvas -->
+    <div id="exam" style="display: none">
+      <video
+        class="input_video"
+        autoplay
+        playsinline
+        style="display: none"></video>
+      <canvas class="output_canvas" width="640" height="480"></canvas>
+      <p id="status">Status: Normal</p>
+    </div>
+
+    <script>
+      let userName = "";
+      const videoElement = document.getElementsByClassName("input_video")[0];
+      const canvasElement = document.getElementsByClassName("output_canvas")[0];
+      const canvasCtx = canvasElement.getContext("2d");
+      const statusText = document.getElementById("status");
+
+      // Variabel deteksi
+      let lookStartTime = null;
+      let currentDirection = null;
+      let lookCount = 0;
+
+      function startExam() {
+        userName = document.getElementById("username").value.trim();
+        if (!userName) {
+          alert("Nama wajib diisi!");
+          return;
+        }
+
+        document.getElementById("login").style.display = "none";
+        document.getElementById("exam").style.display = "block";
+
+        // Kirim log nama ke server
+        fetch("/log", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: `Peserta ${userName} mulai ujian` }),
+        });
+
+        initDetection();
+      }
+
+      function calculateYaw(landmarks) {
+        const leftEye = landmarks[33];
+        const rightEye = landmarks[263];
+        const nose = landmarks[1];
+
+        const eyeMidX = (leftEye.x + rightEye.x) / 2;
+        const dx = nose.x - eyeMidX;
+
+        return dx * 300; // perbesar skala biar lebih sensitif
+      }
+
+      let isLooking = false; // status apakah sedang menoleh
+
+      function onResults(results) {
+        canvasCtx.save();
+        canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+        canvasCtx.translate(canvasElement.width, 0);
+        canvasCtx.scale(-1, 1);
+        canvasCtx.drawImage(
+          results.image,
+          0,
+          0,
+          canvasElement.width,
+          canvasElement.height
+        );
+
+        if (results.multiFaceLandmarks) {
+          for (const landmarks of results.multiFaceLandmarks) {
+            // Wireframe wajah (grid putih tipis)
+            window.drawConnectors(canvasCtx, landmarks, FACEMESH_TESSELATION, {
+              color: "#FFFFFF",
+              lineWidth: 0.5,
+            });
+
+            // Landmark titik abu-abu kecil
+            window.drawLandmarks(canvasCtx, landmarks, {
+              color: "#D3D3D3",
+              radius: 0.5,
+            });
+
+            // Mata kanan (merah)
+            window.drawConnectors(canvasCtx, landmarks, FACEMESH_RIGHT_EYE, {
+              color: "#FF0000",
+              lineWidth: 0.5,
+            });
+
+            // Mata kiri (hijau)
+            window.drawConnectors(canvasCtx, landmarks, FACEMESH_LEFT_EYE, {
+              color: "#00FF00",
+              lineWidth: 0.5,
+            });
+
+            // Mulut (biru)
+            window.drawConnectors(canvasCtx, landmarks, FACEMESH_LIPS, {
+              color: "#0000FF",
+              lineWidth: 0.5,
+            });
+
+            // === Perhitungan yaw & deteksi tengok kanan/kiri ===
+            const yaw = calculateYaw(landmarks);
+            console.log("Yaw:", yaw.toFixed(2)); // debug
+
+            if (yaw > 15) {
+              statusText.textContent = "Status: Menoleh Kanan";
+              isLooking = true;
+            } else if (yaw < -15) {
+              statusText.textContent = "Status: Menoleh Kiri";
+              isLooking = true;
+            } else {
+              // Posisi normal
+              if (isLooking) {
+                lookCount++;
+                statusText.textContent = `Status: Normal (Count = ${lookCount})`;
+                console.log(`Tengokan ke-${lookCount}`);
+                isLooking = false;
+
+                // 🚨 Peringatan tiap kali count bertambah
+                alert(`⚠️ Peringatan! Anda sudah menoleh ${lookCount} kali`);
+
+                // Kirim log ke server
+                fetch("/log", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    message: `Peserta ${userName} menoleh ${lookCount} kali`,
+                  }),
+                });
+
+                // Jika lebih dari 5 kali
+                if (lookCount >= 5) {
+                  alert(
+                    "🚨 Kecurangan terdeteksi! Anda menoleh lebih dari 5 kali."
+                  );
+                  fetch("/log", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      message: `Peserta ${userName} menengok lebih dari 5 kali (kecurangan terdeteksi)`,
+                    }),
+                  });
+                  statusText.textContent = "Status: Dicurigai Mencontek!";
+                  lookCount = 0; // reset setelah kecurangan
+                }
+              } else {
+                statusText.textContent = "Status: Normal";
+              }
+            }
+          }
+        }
+        canvasCtx.restore();
+      }
+
+      function initDetection() {
+        const faceMesh = new FaceMesh({
+          locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+          },
+        });
+
+        faceMesh.setOptions({
+          maxNumFaces: 1,
+          refineLandmarks: true,
+          minDetectionConfidence: 0.5,
+          minTrackingConfidence: 0.5,
+        });
+
+        faceMesh.onResults(onResults);
+
+        const camera = new Camera(videoElement, {
+          onFrame: async () => {
+            await faceMesh.send({ image: videoElement });
+          },
+          width: 640,
+          height: 480,
+        });
+        camera.start();
+      }
+    </script>
+  </body>
+</html>
