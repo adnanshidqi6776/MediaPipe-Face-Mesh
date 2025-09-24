@@ -16,12 +16,9 @@
       <button onclick="startExam()">Mulai Ujian</button>
     </div>
 
-    <!-- Video dan Canvas -->
+    <!-- Hanya canvas (video input disembunyikan) -->
     <div id="exam" style="display: none">
-      <!-- Video input disembunyikan -->
       <video class="input_video" style="display: none"></video>
-
-      <!-- Hanya canvas output yang terlihat -->
       <canvas class="output_canvas" width="640" height="480"></canvas>
       <p id="status">Status: Normal</p>
     </div>
@@ -34,9 +31,8 @@
       const statusText = document.getElementById("status");
 
       // Variabel deteksi
-      let lookStartTime = null;
-      let currentDirection = null;
       let lookCount = 0;
+      let isLooking = false;
 
       function startExam() {
         userName = document.getElementById("username").value.trim();
@@ -66,16 +62,18 @@
         const eyeMidX = (leftEye.x + rightEye.x) / 2;
         const dx = nose.x - eyeMidX;
 
-        return dx * 300; // perbesar skala biar lebih sensitif
+        return dx * 300; // skala yaw
       }
-
-      let isLooking = false; // status apakah sedang menoleh
 
       function onResults(results) {
         canvasCtx.save();
         canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+        // Mirror agar natural
         canvasCtx.translate(canvasElement.width, 0);
         canvasCtx.scale(-1, 1);
+
+        // Gambar video hasil
         canvasCtx.drawImage(
           results.image,
           0,
@@ -86,39 +84,20 @@
 
         if (results.multiFaceLandmarks) {
           for (const landmarks of results.multiFaceLandmarks) {
-            // Wireframe wajah (grid putih tipis)
-            window.drawConnectors(canvasCtx, landmarks, FACEMESH_TESSELATION, {
+            // Wireframe tipis
+            drawConnectors(canvasCtx, landmarks, FACEMESH_TESSELATION, {
               color: "#FFFFFF",
               lineWidth: 0.1,
             });
 
-            // Landmark titik abu-abu kecil
-            window.drawLandmarks(canvasCtx, landmarks, {
-              color: "#D3D3D3",
-              radius: 0.1,
+            // Landmark kecil
+            drawLandmarks(canvasCtx, landmarks, {
+              color: "#FFCC00",
+              radius: 0.5,
             });
 
-            // Mata kanan (merah)
-            window.drawConnectors(canvasCtx, landmarks, FACEMESH_RIGHT_EYE, {
-              color: "#FF0000",
-              lineWidth: 0.1,
-            });
-
-            // Mata kiri (hijau)
-            window.drawConnectors(canvasCtx, landmarks, FACEMESH_LEFT_EYE, {
-              color: "#00FF00",
-              lineWidth: 0.1,
-            });
-
-            // Mulut (biru)
-            window.drawConnectors(canvasCtx, landmarks, FACEMESH_LIPS, {
-              color: "#0000FF",
-              lineWidth: 0.1,
-            });
-
-            // === Perhitungan yaw & deteksi tengok kanan/kiri ===
+            // === Hitung yaw ===
             const yaw = calculateYaw(landmarks);
-            console.log("Yaw:", yaw.toFixed(2)); // debug
 
             if (yaw > 15) {
               statusText.textContent = "Status: Menoleh Kanan";
@@ -131,7 +110,6 @@
               if (isLooking) {
                 lookCount++;
                 statusText.textContent = `Status: Normal (Count = ${lookCount})`;
-                console.log(`Tengokan ke-${lookCount}`);
                 isLooking = false;
 
                 // 🚨 Peringatan tiap kali count bertambah
