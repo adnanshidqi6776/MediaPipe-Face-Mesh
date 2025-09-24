@@ -86,31 +86,31 @@
             // Wireframe wajah (grid putih tipis)
             window.drawConnectors(canvasCtx, landmarks, FACEMESH_TESSELATION, {
               color: "#FFFFFF",
-              lineWidth: 0.5,
+              lineWidth: 0.1,
             });
 
             // Landmark titik abu-abu kecil
             window.drawLandmarks(canvasCtx, landmarks, {
               color: "#D3D3D3",
-              radius: 0.5,
+              radius: 0.1,
             });
 
             // Mata kanan (merah)
             window.drawConnectors(canvasCtx, landmarks, FACEMESH_RIGHT_EYE, {
               color: "#FF0000",
-              lineWidth: 0.5,
+              lineWidth: 0.1,
             });
 
             // Mata kiri (hijau)
             window.drawConnectors(canvasCtx, landmarks, FACEMESH_LEFT_EYE, {
               color: "#00FF00",
-              lineWidth: 0.5,
+              lineWidth: 0.1,
             });
 
             // Mulut (biru)
             window.drawConnectors(canvasCtx, landmarks, FACEMESH_LIPS, {
               color: "#0000FF",
-              lineWidth: 0.5,
+              lineWidth: 0.1,
             });
 
             // === Perhitungan yaw & deteksi tengok kanan/kiri ===
